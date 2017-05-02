@@ -35,7 +35,7 @@ The smoothing spline model in two dimensions:
 Solution:
 \[ f(x,y) = \sum_{i=1}^n w_i ~ d(x_i,y_i)^2 \log d(x_i,y_i).  \]
 
-To fit TPS model, we used `Tps` function from the package `fields`, where predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, ‘pred_coords’, and the TPS model as input to predict the average number of trips, ‘trip_pred’.
+To fit TPS model, we used `Tps` function from the package `fields`, where predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, `pred_coords`, and the TPS model as input to predict the average number of trips, `trip_pred`.
 
 \textbf{Model Fits and Interpretation}
 Leo
