@@ -16,11 +16,18 @@ The target response variable we defined is the number of trips start from a spec
 \
 
 \textbf{Gaussian Process Model}
-Cici
+
+To fit Gaussian Process Model, we used `spLM` function from the package `spBayes`, where predictors are longitudes and latitude of those 70 stations and response variables are the average number of trips starting from those stations. We set `starting` parameter values according to the variogram, use default values for `tuning`, and choose `prior` parameters according to the `starting` parameter values.
+
+To get the coordinates for prediction, we loaded an internal dataset in R which contained the geolocation information of the US and then selected all three counties of the Bay Area, ‘San Francisco’, ‘San Mateo’, and ‘Santa Clara’, combined them and transformed it into a polygon. After that, we sampled some points inside of these areas as prediction coordinates.
+
+A raster is a spatial (geographic) data structure that divides a region into rectangles called 'cells' (or 'pixels') that can store one or more values for each of these cells. Such a data structure is also referred to as a 'grid'. After we got predicted values from fitted model with coordinates for prediction, we could fill in the raster and plot the result.
+
 
 \textbf{Thin Plate Splines (TPS)} \
-\
+
 To fit TPS model, predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, ‘pred_coords’, and the TPS model as input to predict the average number of trips, ‘trip_pred’.
+\
 
 \textbf{Model Fits and Interpretation}
 Leo
