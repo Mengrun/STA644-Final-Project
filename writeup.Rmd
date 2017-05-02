@@ -24,10 +24,18 @@ To get the coordinates for prediction, we loaded an internal dataset in R which 
 A raster is a spatial (geographic) data structure that divides a region into rectangles called 'cells' (or 'pixels') that can store one or more values for each of these cells. Such a data structure is also referred to as a 'grid'. After we got predicted values from fitted model with coordinates for prediction, we could fill in the raster and plot the result.
 
 
-\textbf{Thin Plate Splines (TPS)} \
+\textbf{Thin Plate Splines (TPS)} 
 
-To fit TPS model, predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, ‘pred_coords’, and the TPS model as input to predict the average number of trips, ‘trip_pred’.
-\
+Observed data: \((x_i, y_i, z_i)\), where
+we wish to predict the number of trips \(z_i\) given longitude \(x_i\) and latitude \(y_i\) for all \(i\)
+
+The smoothing spline model in two dimensions:
+\[ \underset{f(x,y)}{\arg\min} ~~ \sum_{i=1}^n (z_i-f(x_i,y_i))^2 + \lambda \int \int \left(\frac{\partial^2 f}{\partial x^2} + 2 \frac{\partial^2 f}{\partial x \, \partial y} + \frac{\partial^2 f}{\partial y^2} \right) dx\, dy\]
+
+Solution:
+\[ f(x,y) = \sum_{i=1}^n w_i ~ d(x_i,y_i)^2 \log d(x_i,y_i).  \]
+
+To fit TPS model, we used `Tps` function from the package `fields`, where predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, ‘pred_coords’, and the TPS model as input to predict the average number of trips, ‘trip_pred’.
 
 \textbf{Model Fits and Interpretation}
 Leo
