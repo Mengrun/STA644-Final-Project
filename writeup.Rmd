@@ -14,11 +14,13 @@ We downloaded the data from http://www.bayareabikeshare.com/open-data. There are
 
 The target response variable we defined is the number of trips start from a specific bike station. We combined the two datasets and aggregated into year level, day of week and hour of day level of each station, respectively.
 \
-\textbf{Thin Plate Splines (TPS)}
-Yulin
 
 \textbf{Gaussian Process Model}
 Cici
+
+\textbf{Thin Plate Splines (TPS)} \
+\
+To fit TPS model, predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, ‘pred_coords’, and the TPS model as input to predict the average number of trips, ‘trip_pred’.
 
 \textbf{Model Fits and Interpretation}
 Leo
