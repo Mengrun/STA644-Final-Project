@@ -148,7 +148,7 @@ Model II: Thin Plate Splines(TPS)
 ========================================================
 ```{r, eval=FALSE}
 coords = agg[,c('long','lat')] %>% as.matrix()
-tps = Tps(x = coords, Y=agg1$avg)
+tps = Tps(x = coords, Y=agg$avg)
 trip_pred = r
 trip_pred[cells] = predict(tps, pred_coords)
 ```
