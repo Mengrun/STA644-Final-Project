@@ -18,7 +18,8 @@ The target response variable we defined is the number of trips start from a spec
 \textbf{Gaussian Process Model}
 Cici
 
-\textbf{Thin Plate Splines (TPS)}
+\textbf{Thin Plate Splines (TPS)} \
+\
 To fit TPS model, predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, ‘pred_coords’, and the TPS model as input to predict the average number of trips, ‘trip_pred’.
 
 \textbf{Model Fits and Interpretation}
