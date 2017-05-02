@@ -194,6 +194,19 @@ log = capture.output({
      points(coords, pch=16, cex=0.5)
 ```
 
+Trace plots
+==================================================
+```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE}
+log = capture.output({m = spRecover(m, start=n_samp/2+1, thin = (n_samp/2)/1000)})
+m$p.theta.recover.samples %>% mcmc() %>% plot()
+```
+
+Trace plots
+==================================================
+```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE}
+m$p.beta.recover.samples %>% mcmc() %>% plot()
+```
+
 Day of Week (GP)
 ====================================================
 ```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE}
