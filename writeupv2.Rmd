@@ -99,7 +99,15 @@ post_summary = function(m, ci_width=0.95)
 }
 ```
 
-```{r, echo=FALSE, fig.width=30, fig.height=15}
+
+# Data Description
+
+We downloaded the data from http://www.bayareabikeshare.com/open-data. There are two datasets that we mainly used recorded from 2014/09/01 to 2015/08/31 including station information(station ID, name, latitude, longitude, dockcount, city), trip information(time, start terminal, end terminal, duration in second). There are 70 bike stations located in 5 different Bay Area cities, which are San Francisco, Palo Alto, Redwood City, Mountain View and San Jose.
+
+The target response variable we defined is the number of trips starting from a specific bike station. We combined the two datasets and aggregated into yearly, day of week and hour of day level of each station, respectively.  
+
+## Exploratory Data Analysis  
+```{r, echo=FALSE, fig.width=30, fig.height=13}
 g1 = ggplot(bay_county)+geom_polygon(aes(long,lat,group = group, fill = subregion)) +
   theme(legend.title = element_text(size=18),legend.text=element_text(size=12))
 g2 = ggplot(agg_year, aes(long,lat)) + stat_bin_2d(bins = 50) + 
@@ -116,12 +124,7 @@ g3 = ggplot() + geom_point(data = agg_year, aes(long,lat,colour = avg),size=5) +
 
 grid.arrange(g1,g2,g3, ncol = 3)
 ```
-
-# Data Description
-
-We downloaded the data from http://www.bayareabikeshare.com/open-data. There are two datasets that we mainly used recorded from 2014/09/01 to 2015/08/31 including station information(station ID, name, latitude, longitude, dockcount, city), trip information(time, start terminal, end terminal, duration in second). There are 70 bike stations located in 5 different Bay Area cities.
-
-The target response variable we defined is the number of trips start from a specific bike station. We combined the two datasets and aggregated into year level, day of week and hour of day level of each station, respectively.
+The figure on the left above shows the three counties(San Francisco, San Mateo and Santa Clara) where the 5 cities are located. The one in the middle is a heatmap of count of stations. As can be seen, there are more bike stations in San Francisco and San Jose than they are in the other three cities located in San Mateo county. The figure on the right shows the total number of trips starting from the given station through the whole year. We can see that most of trips are in San Francisco, which makes sense. Because San Francisco has higher population density than the other four cities and it also has more bike stations. According to these findings, we will fit two spatial models in the next section to capture and predict the bike trip pattern of three counties.
 
 # Model
 
