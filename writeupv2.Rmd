@@ -1,0 +1,313 @@
+---
+title: "STA 644 Project Report"
+author: "Yaqian Cheng, Yulin Lei, Mengrun Li, Leonardo Shu"
+date: "May 1, 2017"
+output: pdf_document
+---
+
+```{r load packages, warning = FALSE, comment = FALSE, message = FALSE, echo = FALSE, size = "small"}
+library(data.table)
+library(fields)
+library(dplyr)
+library(lubridate)
+library(raster)
+library(stringr)
+library(sf)
+library(geoR)
+library(spBayes)
+library(ggplot2)
+library(chron)
+library(gridExtra)
+```
+
+\textbf{Introduction \& Goal} \
+Our aim for this project was to explore the models concerning point reference data and observe how they performed on a scenario of interest to us. Specifically, we wanted to see how Gaussian Process Models and Thin Plate Splines could help us make use of bike trip data in the Bay Area by predicting the locations of where users would most likely start a trip from. In doing so we would be able to see which bike stations are the most popular (in demand) and whether there are other areas they could expand to in order to capture more potential customers.\
+\
+
+```{r data preparation, echo=FALSE, cache=TRUE}
+trip <- fread("babs_open_data_year_2/201508_trip_data.csv")
+station <- fread("babs_open_data_year_2/201508_station_data.csv")
+
+df = trip %>%
+  mutate(date = floor_date(mdy_hm(`Start Date`),'day')) %>%
+  mutate(hour_of_day = hour(mdy_hm(`Start Date`))) %>%
+  group_by(`Start Terminal`, date, hour_of_day) %>%
+  summarise(`Number of Trips` = n())
+
+agg = merge(df, station, by.x = 'Start Terminal', by.y = 'station_id') %>% mutate(day_of_week = wday(date))
+
+agg_day = agg %>% 
+  group_by(`Start Terminal`,date, day_of_week, lat, long) %>%
+  summarise(total = sum(`Number of Trips`)) %>%
+  group_by(`Start Terminal`, day_of_week, lat, long) %>%
+  summarise(avg = mean(total))
+
+agg_hour = agg %>%
+  group_by(`Start Terminal`, hour_of_day, lat, long) %>% 
+  summarise(avg = mean(`Number of Trips`))
+
+agg_year = agg %>%
+  group_by(`Start Terminal`, lat, long) %>% 
+  summarise(avg = sum(`Number of Trips`))
+```
+
+```{r get coordinates for prediction, echo=FALSE, cache=TRUE}
+counties <- map_data("county")
+ca_county <- subset(counties, region == "california")
+bay_name <- c("san francisco", "san mateo","santa clara")
+bay_county <- subset(ca_county,subregion %in% bay_name)
+
+sf <- subset(ca_county,subregion %in% "san francisco") %>% dplyr::select(long, lat) %>% as.matrix()
+sm <- subset(ca_county,subregion %in% "san mateo") %>% dplyr::select(long, lat) %>% as.matrix()
+sc <- subset(ca_county,subregion %in% "santa clara") %>% dplyr::select(long, lat) %>% as.matrix()
+
+sf_poly <- st_polygon(list(sf))
+sf_sample <- st_sample(sf_poly,100)
+sm_poly <- st_polygon(list(sm))
+sm_sample <- st_sample(sm_poly,1000)
+sc_poly <- st_polygon(list(sc))
+sc_sample <- st_sample(sc_poly,3000)
+
+r = raster(nrows=30, ncol=60, xmn = min(bay_county$long), xmx = max(bay_county$long),ymn = min(bay_county$lat), ymx = max(bay_county$lat))
+
+sf_points <- rbind(matrix(unlist(sf_sample),ncol = 2, byrow = TRUE), matrix(unlist(sf_poly),ncol = 2, byrow = TRUE))
+sm_points <- rbind(matrix(unlist(sm_sample),ncol = 2, byrow = TRUE), matrix(unlist(sm_poly),ncol = 2, byrow = TRUE))
+sc_points <- rbind(matrix(unlist(sc_sample),ncol = 2, byrow = TRUE), matrix(unlist(sc_poly),ncol = 2, byrow = TRUE))
+bay_points <- rasterize(rbind(sf_points,sm_points,sc_points),r)
+cells = which(!is.na(bay_points[]))
+pred_coords = xyFromCell(r, cells)
+
+```
+
+```{r, echo=FALSE, cache=TRUE}
+post_summary = function(m, ci_width=0.95)
+{
+  d = data_frame(
+    post_mean  = apply(m, 2, mean),
+    post_med   = apply(m, 2, median),
+    post_lower = apply(m, 2, quantile, probs=(1-ci_width)/2),
+    post_upper = apply(m, 2, quantile, probs=1 - (1-ci_width)/2)
+  )
+  
+  if (!is.null(colnames(m)))
+    d = d %>% mutate(param = colnames(m)) %>% select(param,post_mean:post_upper)
+  
+  d
+}
+```
+
+```{r, echo=FALSE, fig.width=30, fig.height=15}
+g1 = ggplot(bay_county)+geom_polygon(aes(long,lat,group = group, fill = subregion)) +
+  theme(legend.title = element_text(size=18),legend.text=element_text(size=12))
+g2 = ggplot(agg_year, aes(long,lat)) + stat_bin_2d(bins = 50) + 
+  xlim(min(bay_county$long), max(bay_county$long)) +
+  ylim(min(bay_county$lat), max(bay_county$lat)) +
+  scale_fill_gradientn(colours = rev(terrain.colors(6))) +
+  theme(legend.title = element_text(size=18),legend.text=element_text(size=12))
+g3 = ggplot() + geom_point(data = agg_year, aes(long,lat,colour = avg),size=5) + 
+  xlim(min(bay_county$long), max(bay_county$long)) +
+  ylim(min(bay_county$lat), max(bay_county$lat)) +
+  labs(color='total') +
+  scale_colour_gradientn(colours = rev(terrain.colors(6)))+
+  theme(legend.title = element_text(size=18),legend.text=element_text(size=12))
+
+grid.arrange(g1,g2,g3, ncol = 3)
+```
+
+\textbf{Data Description} \
+\
+We downloaded the data from http://www.bayareabikeshare.com/open-data. There are two datasets that we mainly used recorded from 2014/09/01 to 2015/08/31 including station information(station ID, name, latitude, longitude, dockcount, city), trip information(time, start terminal, end terminal, duration in second). There are 70 bike stations located in 5 different Bay Area cities.
+
+The target response variable we defined is the number of trips start from a specific bike station. We combined the two datasets and aggregated into year level, day of week and hour of day level of each station, respectively.
+\
+
+\textbf{Gaussian Process Model}
+
+To fit Gaussian Process Model, we used `spLM` function from the package `spBayes`, where predictors are longitudes and latitude of those 70 stations and response variables are the average number of trips starting from those stations. We set `starting` parameter values according to the variogram, use default values for `tuning`, and choose `prior` parameters according to the `starting` parameter values.
+
+
+A raster is a spatial (geographic) data structure that divides a region into rectangles called 'cells' (or 'pixels') that can store one or more values for each of these cells. Such a data structure is also referred to as a 'grid'. After we got predicted values from fitted model with coordinates for prediction, we could fill in the raster and plot the result.
+
+
+\textbf{Thin Plate Splines (TPS)} 
+
+Observed data: \((x_i, y_i, z_i)\), where
+we wish to predict the number of trips \(z_i\) given longitude \(x_i\) and latitude \(y_i\) for all \(i\)
+
+The smoothing spline model in two dimensions:
+\[ \underset{f(x,y)}{\arg\min} ~~ \sum_{i=1}^n (z_i-f(x_i,y_i))^2 + \lambda \int \int \left(\frac{\partial^2 f}{\partial x^2} + 2 \frac{\partial^2 f}{\partial x \, \partial y} + \frac{\partial^2 f}{\partial y^2} \right) dx\, dy\]
+
+Solution:
+\[ f(x,y) = \sum_{i=1}^n w_i ~ d(x_i,y_i)^2 \log d(x_i,y_i).  \]
+
+To fit TPS model, we used `Tps` function from the package `fields`, where predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, `pred_coords`, and the TPS model as input to predict the average number of trips, `trip_pred`.
+
+\textbf{Model Fits and Interpretation}
+
+```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=18, fig.height=10, cache=TRUE, fig.cap = "Overall Prediction Mapf for GP and TPS"}
+par(mfrow = c(1,2), oma=c(4,4,4,4), mar=c(2,4,2,4))
+log = capture.output({
+   coords = agg_year[,c('long','lat')] %>% as.matrix()
+     d = dist(coords) %>% as.matrix()
+   # variog(coords = coords, data = day$avg, messages = FALSE, uvec = seq(0, max(d)/4, length.out=50)) %>% plot()
+   max_range = max(dist(coords)) / 4
+   n_samp = 20000
+   starting = list(phi = 3/0.025, sigma.sq = 3e7, tau.sq = 1e7)
+   tuning = list("phi"=0.1, "sigma.sq"=0.1, "tau.sq"=0.1)
+   priors = list(
+     beta.Norm = list(0, 1000), 
+     phi.Unif = c(3/max_range,200), 
+     sigma.sq.IG = c(2, 2e7), 
+     tau.sq.IG = c(2, 2e7)
+   )
+  m = spLM(avg ~ 1, data = agg_year, coords = coords, starting = starting, priors = priors, 
+          cov.model = "exponential", n.samples = n_samp, tuning = tuning,
+          n.report = n_samp/2)
+ 
+ m_pred = spPredict(m, pred_coords, pred.covars = matrix(1, nrow=nrow(pred_coords)), 
+                    start=n_samp/2+1, thin=(n_samp/2)/1000)
+ m_pred_summary = post_summary(t(m_pred$p.y.predictive.samples))
+ 
+ splm_pred = r
+ splm_pred[cells] = m_pred_summary$post_mean
+     #tps
+     tps = Tps(x = coords, Y=agg_year$avg)
+     trip_pred = r
+     pred <- predict(tps, pred_coords)
+     pred[pred<0] <- 0
+     trip_pred[cells] = pred
+ })
+     plot(splm_pred, main='GP')
+     points(coords, pch=16, cex=0.5)
+     plot(trip_pred,cex = 0.8, main='TPS')
+     points(coords, pch=16, cex=0.5)
+```
+
+```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE}
+log = capture.output({m = spRecover(m, start=n_samp/2+1, thin = (n_samp/2)/1000)})
+m$p.theta.recover.samples %>% mcmc() %>% plot()
+```
+
+```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE}
+m$p.beta.recover.samples %>% mcmc() %>% plot()
+```
+
+OVERALL
+GP: Correctly determines the popular demand around San Francisco and the low demands amongst the stations in Palo Alto and San Jose. Everywehere else where there is not much training data it predicts with the mean number of trips overall. We also see from the above traceplots that all parameters are converging well so the problems are how we choose our tuning and prior parameters.
+
+TPS: This model provides much more intuition with the smoothing it performs. It tells us that The southern areas of the San Francisco is where most of the demand is and it could bode well for the company to add more stations there. Palo Alto and San Jose don't see many trips a priori so it makes sense that the areas around these stations do not see alot of trips. In fact, this model predicts that alot of areas such as south of San Mateo and northeast of San Jose have no expectred trips and this is something we should expect given that the smoothing should not that far from the points we do have data on.
+
+DAY OF WEEK
+GP: Different, but constant patterns across weekdays and weekends. The model does not do well in predicting areas far away from our known stations so it basically gives a mean value to these. In San Francisco, however, it seems to ascertain that most of the trips are happening there. There's also a notable difference in scales and we see much less trips on weekends. This is counter-intuitive since we first thought these bikes were used by tourists as a leisure activity but perhaps they are being used by locals to commute to work.
+
+```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE, fig.cap = "Day of Week (Mon-Sun) Prediction Map for GP"}
+#model for dow
+par(mfrow = c(2,4), oma=c(4,4,4,4), mar=c(2,4,2,4))
+for(i in c(2:6,7,1)){
+  log = capture.output({
+  day = filter(agg_day, day_of_week==i)
+  coords = day[,c('long', 'lat')] %>% as.matrix()
+  d = dist(coords) %>% as.matrix()
+  # variog(coords = coords, data = day$avg, messages = FALSE, uvec = seq(0, max(d)/4, length.out=50)) %>% plot()
+  max_range = max(dist(coords)) / 4
+  n_samp = 20000
+  starting = list(phi = 3/0.025, sigma.sq = 300, tau.sq = 100)
+  tuning = list("phi"=0.1, "sigma.sq"=0.1, "tau.sq"=0.1)
+  priors = list(
+    beta.Norm = list(0, 1000), 
+    phi.Unif = c(3/max_range,200), 
+    sigma.sq.IG = c(2, 200), 
+    tau.sq.IG = c(2, 200)
+  )
+  m = spLM(avg ~ 1, data = day, coords = coords, starting = starting, priors = priors, 
+         cov.model = "exponential", n.samples = n_samp, tuning = tuning,
+         n.report = n_samp/2)
+
+m_pred = spPredict(m, pred_coords, pred.covars = matrix(1, nrow=nrow(pred_coords)), 
+                   start=n_samp/2+1, thin=(n_samp/2)/1000)
+m_pred_summary = post_summary(t(m_pred$p.y.predictive.samples))
+
+splm_pred = r
+splm_pred[cells] = m_pred_summary$post_mean
+})
+plot(splm_pred, main = weekdays(i+2))
+points(coords, pch=16, cex=0.5)
+}
+```
+
+TPS: Once again we see very distinct patterns between weekdays and weekends. Unlike before, there are many patches were the estimated number of trips will be 0 such as south of San Mateo during the week. The areas around San Francisco are still the most popular to start trips but we still predict some trips around Palo Alto and most of Santa Clara. We think these are the places where people are working the most. This supports the idea that locals use these bikes to work since these areas are predicted to have 0 trips during the weekend. Also during weekends there again is less trips on average so using them for leisure is likely.
+
+```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE, fig.cap = "Day of Week (Mon-Sun) Prediction Map for TPS"}
+#model for dow
+par(mfrow = c(2,4), oma=c(4,4,4,4), mar=c(2,4,2,4))
+for(i in c(2:6,7,1)){
+    log = capture.output({
+    day = filter(agg_day, day_of_week==i)
+    coords = day[,c('long','lat')] %>% as.matrix()
+    tps = Tps(x = coords, Y=day$avg)
+    trip_pred = r
+    pred <- predict(tps, pred_coords)
+    pred[pred<0] <- 0
+    trip_pred[cells] = pred
+    })
+    plot(trip_pred,cex = 0.8, main = weekdays(i+2))
+    points(coords, pch=16, cex=0.5)
+}
+```
+
+\newpage
+
+HOUR
+GP: Mornings are similar to day of week where the SF stations are popular and the rest of the map is predicted evenly. Same pattern early afternoon but with less trips overall (less than 2). Nighttime has the same pattern but now there are more trips all across the bay area. Which is more than we have seen before so night time seems to be quite an active period where leisure is now used.
+
+TPS: Commuting time sees south of San Mateo to be blank as before reinforcing the idea that most people that commute to work do not have jobs there. Early afternoon looks like the overall pattern and less trips overall in scale. Same pattern as in early afternoon with overall more trips around the area which means this time of night is pretty active for bike riding.
+
+```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=18, fig.height=5, cache=TRUE, fig.cap = "Hourly (9.00AM, 13.00PM, 21.00PM) Prediction Map for GP and TPS"}
+par(mfrow = c(1,3), oma=c(4,4,4,4), mar=c(2,4,2,4))
+for (i in c(9,13,21)){
+  log = capture.output({
+  hour = filter(agg_hour, hour_of_day==i)
+  coords = hour[,c('long', 'lat')] %>% as.matrix()
+  d = dist(coords) %>% as.matrix()
+  # variog(coords = coords, data = hour$avg, messages = FALSE, uvec = seq(0, max(d)/4, length.out=50)) %>% plot()
+  max_range = max(dist(coords)) / 4
+  n_samp = 20000
+  starting = list(phi = 3/0.025, sigma.sq = 33, tau.sq = 17)
+  tuning = list("phi"=0.1, "sigma.sq"=0.1, "tau.sq"=0.1)
+  priors = list(
+    beta.Norm = list(0, 1000), 
+    phi.Unif = c(3/max_range, 200), 
+    sigma.sq.IG = c(2, 2), 
+    tau.sq.IG = c(2, 2)
+  )
+  m = spLM(avg ~ 1, data = hour, coords = coords, starting = starting, priors = priors, 
+         cov.model = "exponential", n.samples = n_samp, tuning = tuning,
+         n.report = n_samp/2)
+
+m_pred = spPredict(m, pred_coords, pred.covars = matrix(1, nrow=nrow(pred_coords)), 
+                   start=n_samp/2+1, thin=(n_samp/2)/1000)
+m_pred_summary = post_summary(t(m_pred$p.y.predictive.samples))
+
+splm_pred = r
+splm_pred[cells] = m_pred_summary$post_mean
+})
+  plot(splm_pred, main=paste0(i, ":00"))
+  points(coords, pch=16, cex=0.5)
+}
+title(main=list("GP", cex=2), outer=TRUE)
+par(mfrow = c(1,3), oma=c(4,4,4,4), mar=c(2,4,2,4))
+for (i in c(9,13,21)){
+  agg1 = agg_hour %>% filter(hour_of_day==i)
+  coords = agg1[,c('long','lat')] %>% as.matrix()
+  tps = Tps(x = coords, Y=agg1$avg)
+  trip_pred = r
+  pred <- predict(tps, pred_coords)
+  pred[pred<0] <- 0
+  trip_pred[cells] = pred
+  plot(trip_pred,cex = 0.8, main=paste0(i,":00"))
+  points(unique(coords), pch=16, cex=0.5)
+}
+title(main=list("TPS", cex=2), outer=TRUE)
+```
+
+All in all even though are predictions are quite raw and we forced many assumptions on the data so we could fit these models, we believe most of the interpretations we did manage to get could be valuable to the Bay Area Bike Share company since they could re-evaluate if its necessary to keep many stations in Redwood City or Palo Alto which see little demand during the day and can instead focus their resources on keeping all the SF stations supplied giventhat most of their businesss is there. For further improvements we would like to try these models with data sets that cover more ground and are not as limited to particular locations. We also would like to try a wider range of tuning parameters and prior values so the GP model acts more as expected and does not breakdown as often.
