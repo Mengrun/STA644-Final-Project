@@ -2,7 +2,9 @@
 title: "STA 644 Project Report"
 author: "Yaqian Cheng, Yulin Lei, Mengrun Li, Leonardo Shu"
 date: "May 1, 2017"
-output: pdf_document
+output: 
+  pdf_document:
+    number_sections: true
 ---
 
 ```{r load packages, warning = FALSE, comment = FALSE, message = FALSE, echo = FALSE, size = "small"}
@@ -20,7 +22,8 @@ library(chron)
 library(gridExtra)
 ```
 
-\textbf{Introduction \& Goal} \
+#Introduction 
+
 Our aim for this project was to explore the models concerning point reference data and observe how they performed on a scenario of interest to us. Specifically, we wanted to see how Gaussian Process Models and Thin Plate Splines could help us make use of bike trip data in the Bay Area by predicting the locations of where users would most likely start a trip from. In doing so we would be able to see which bike stations are the most popular (in demand) and whether there are other areas they could expand to in order to capture more potential customers.\
 \
 
@@ -114,22 +117,29 @@ g3 = ggplot() + geom_point(data = agg_year, aes(long,lat,colour = avg),size=5) +
 grid.arrange(g1,g2,g3, ncol = 3)
 ```
 
-\textbf{Data Description} \
-\
+# Data Description
+
 We downloaded the data from http://www.bayareabikeshare.com/open-data. There are two datasets that we mainly used recorded from 2014/09/01 to 2015/08/31 including station information(station ID, name, latitude, longitude, dockcount, city), trip information(time, start terminal, end terminal, duration in second). There are 70 bike stations located in 5 different Bay Area cities.
 
 The target response variable we defined is the number of trips start from a specific bike station. We combined the two datasets and aggregated into year level, day of week and hour of day level of each station, respectively.
-\
 
-\textbf{Gaussian Process Model}
+# Model
 
-To fit Gaussian Process Model, we used `spLM` function from the package `spBayes`, where predictors are longitudes and latitude of those 70 stations and response variables are the average number of trips starting from those stations. We set `starting` parameter values according to the variogram, use default values for `tuning`, and choose `prior` parameters according to the `starting` parameter values.
+## Gaussian Process (GP)
+
+We used a Gaussian Process model to fit the data and assumed an exponential covariance structure.
+
+$$\boldsymbol{y}\sim(\mathsf{\mu, \Sigma})$$
+$$\{\Sigma\}_{ij}=\sigma^2\exp(-r||s_i-s_j||)\sigma_n^2\mathbf{1}{i=j}$$
+Where $\boldsymbol{y}$ is the total/average number of trips starting from selected coordinates.
+
+To fit Gaussian Process model, we used `spLM` function from the package `spBayes`, where predictors are longitudes and latitudes of those 70 stations and response variables are the total/average number of trips starting from those stations. We set `starting` parameter values according to the variogram, use default values for `tuning`, and choose `prior` parameters according to the `starting` parameter values.
 
 
-A raster is a spatial (geographic) data structure that divides a region into rectangles called 'cells' (or 'pixels') that can store one or more values for each of these cells. Such a data structure is also referred to as a 'grid'. After we got predicted values from fitted model with coordinates for prediction, we could fill in the raster and plot the result.
+A raster is a spatial (geographic) data structure that divides a region into rectangles called 'cells' (or 'pixels') that can store one or more values for each of these cells. Such a data structure is also referred to as a 'grid'. We generated the raster based on the boundary of bay area. After we got predicted values from fitted model with coordinates for prediction `pred_coords`, we could fill in the raster and plot the result.
 
 
-\textbf{Thin Plate Splines (TPS)} 
+## Thin Plate Splines (TPS)
 
 Observed data: \((x_i, y_i, z_i)\), where
 we wish to predict the number of trips \(z_i\) given longitude \(x_i\) and latitude \(y_i\) for all \(i\)
@@ -140,9 +150,9 @@ The smoothing spline model in two dimensions:
 Solution:
 \[ f(x,y) = \sum_{i=1}^n w_i ~ d(x_i,y_i)^2 \log d(x_i,y_i).  \]
 
-To fit TPS model, we used `Tps` function from the package `fields`, where predictors are longitudes and latitudes of those 70 stations and response variables are the average number of trips starting from those stations. Then we used prediction coordinates, `pred_coords`, and the TPS model as input to predict the average number of trips, `trip_pred`.
+To fit TPS model, we used `Tps` function from the package `fields`, where predictors are longitudes and latitudes of those 70 stations and response variables are the total/average number of trips starting from those stations. Then we used prediction coordinates, `pred_coords`, and the TPS model as input to predict the average number of trips, `trip_pred`.
 
-\textbf{Model Fits and Interpretation}
+# Model Fits and Interpretation
 
 ```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=18, fig.height=10, cache=TRUE, fig.cap = "Overall Prediction Mapf for GP and TPS"}
 par(mfrow = c(1,2), oma=c(4,4,4,4), mar=c(2,4,2,4))
@@ -192,13 +202,16 @@ m$p.theta.recover.samples %>% mcmc() %>% plot()
 m$p.beta.recover.samples %>% mcmc() %>% plot()
 ```
 
-OVERALL
-GP: Correctly determines the popular demand around San Francisco and the low demands amongst the stations in Palo Alto and San Jose. Everywehere else where there is not much training data it predicts with the mean number of trips overall. We also see from the above traceplots that all parameters are converging well so the problems are how we choose our tuning and prior parameters.
+## OVERALL
+### GP
+Correctly determines the popular demand around San Francisco and the low demands amongst the stations in Palo Alto and San Jose. Everywehere else where there is not much training data it predicts with the mean number of trips overall. We also see from the above traceplots that all parameters are converging well so the problems are how we choose our tuning and prior parameters.
 
-TPS: This model provides much more intuition with the smoothing it performs. It tells us that The southern areas of the San Francisco is where most of the demand is and it could bode well for the company to add more stations there. Palo Alto and San Jose don't see many trips a priori so it makes sense that the areas around these stations do not see alot of trips. In fact, this model predicts that alot of areas such as south of San Mateo and northeast of San Jose have no expectred trips and this is something we should expect given that the smoothing should not that far from the points we do have data on.
+###TPS
+This model provides much more intuition with the smoothing it performs. It tells us that The southern areas of the San Francisco is where most of the demand is and it could bode well for the company to add more stations there. Palo Alto and San Jose don't see many trips a priori so it makes sense that the areas around these stations do not see alot of trips. In fact, this model predicts that alot of areas such as south of San Mateo and northeast of San Jose have no expectred trips and this is something we should expect given that the smoothing should not that far from the points we do have data on.
 
-DAY OF WEEK
-GP: Different, but constant patterns across weekdays and weekends. The model does not do well in predicting areas far away from our known stations so it basically gives a mean value to these. In San Francisco, however, it seems to ascertain that most of the trips are happening there. There's also a notable difference in scales and we see much less trips on weekends. This is counter-intuitive since we first thought these bikes were used by tourists as a leisure activity but perhaps they are being used by locals to commute to work.
+##DAY OF WEEK
+###GP
+Different, but constant patterns across weekdays and weekends. The model does not do well in predicting areas far away from our known stations so it basically gives a mean value to these. In San Francisco, however, it seems to ascertain that most of the trips are happening there. There's also a notable difference in scales and we see much less trips on weekends. This is counter-intuitive since we first thought these bikes were used by tourists as a leisure activity but perhaps they are being used by locals to commute to work.
 
 ```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE, fig.cap = "Day of Week (Mon-Sun) Prediction Map for GP"}
 #model for dow
@@ -235,7 +248,8 @@ points(coords, pch=16, cex=0.5)
 }
 ```
 
-TPS: Once again we see very distinct patterns between weekdays and weekends. Unlike before, there are many patches were the estimated number of trips will be 0 such as south of San Mateo during the week. The areas around San Francisco are still the most popular to start trips but we still predict some trips around Palo Alto and most of Santa Clara. We think these are the places where people are working the most. This supports the idea that locals use these bikes to work since these areas are predicted to have 0 trips during the weekend. Also during weekends there again is less trips on average so using them for leisure is likely.
+###TPS
+Once again we see very distinct patterns between weekdays and weekends. Unlike before, there are many patches were the estimated number of trips will be 0 such as south of San Mateo during the week. The areas around San Francisco are still the most popular to start trips but we still predict some trips around Palo Alto and most of Santa Clara. We think these are the places where people are working the most. This supports the idea that locals use these bikes to work since these areas are predicted to have 0 trips during the weekend. Also during weekends there again is less trips on average so using them for leisure is likely.
 
 ```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=20, fig.height=10, cache=TRUE, fig.cap = "Day of Week (Mon-Sun) Prediction Map for TPS"}
 #model for dow
@@ -257,10 +271,12 @@ for(i in c(2:6,7,1)){
 
 \newpage
 
-HOUR
-GP: Mornings are similar to day of week where the SF stations are popular and the rest of the map is predicted evenly. Same pattern early afternoon but with less trips overall (less than 2). Nighttime has the same pattern but now there are more trips all across the bay area. Which is more than we have seen before so night time seems to be quite an active period where leisure is now used.
+##HOUR OF DAY
+###GP
+Mornings are similar to day of week where the SF stations are popular and the rest of the map is predicted evenly. Same pattern early afternoon but with less trips overall (less than 2). Nighttime has the same pattern but now there are more trips all across the bay area. Which is more than we have seen before so night time seems to be quite an active period where leisure is now used.
 
-TPS: Commuting time sees south of San Mateo to be blank as before reinforcing the idea that most people that commute to work do not have jobs there. Early afternoon looks like the overall pattern and less trips overall in scale. Same pattern as in early afternoon with overall more trips around the area which means this time of night is pretty active for bike riding.
+###TPS
+Commuting time sees south of San Mateo to be blank as before reinforcing the idea that most people that commute to work do not have jobs there. Early afternoon looks like the overall pattern and less trips overall in scale. Same pattern as in early afternoon with overall more trips around the area which means this time of night is pretty active for bike riding.
 
 ```{r, echo=FALSE, message = FALSE, warning=FALSE, fig.width=18, fig.height=5, cache=TRUE, fig.cap = "Hourly (9.00AM, 13.00PM, 21.00PM) Prediction Map for GP and TPS"}
 par(mfrow = c(1,3), oma=c(4,4,4,4), mar=c(2,4,2,4))
@@ -309,5 +325,7 @@ for (i in c(9,13,21)){
 }
 title(main=list("TPS", cex=2), outer=TRUE)
 ```
+
+# Conclusion
 
 All in all even though are predictions are quite raw and we forced many assumptions on the data so we could fit these models, we believe most of the interpretations we did manage to get could be valuable to the Bay Area Bike Share company since they could re-evaluate if its necessary to keep many stations in Redwood City or Palo Alto which see little demand during the day and can instead focus their resources on keeping all the SF stations supplied giventhat most of their businesss is there. For further improvements we would like to try these models with data sets that cover more ground and are not as limited to particular locations. We also would like to try a wider range of tuning parameters and prior values so the GP model acts more as expected and does not breakdown as often.
